@@ -30,10 +30,10 @@ class NodeReturnValue:
 @dataclass
 class Node(Generic[T]):
     name: str
-    prompt: Union[Callable[U, str], str]
-    exit_callback: Callable[U, NodeReturnValue]
+    prompt: Union[Callable[[U], str], str]
+    exit_callback: Callable[[U], NodeReturnValue]
     on_invalid: Callable[[str, U], None]
-    init_callback: Optional[Callable[U, None]] = None
+    init_callback: Optional[Callable[[U], None]] = None
     input_parser: Optional[Callable[[str, U], Optional[T]]] = None
 
     def call(self, state: U) -> NodeReturnValue:
@@ -65,10 +65,10 @@ class SingleNode(Node):
     def __init__(
         self,
         name: str,
-        prompt: Union[Callable[U, str], str],
-        exit_callback: Callable[U, NodeReturnValue],
+        prompt: Union[Callable[[U], str], str],
+        exit_callback: Callable[[U], NodeReturnValue],
         on_invalid: Callable[[str, U], None],
-        init_callback: Optional[Callable[U, None]] = None,
+        init_callback: Optional[Callable[[U], None]] = None,
         input_parser: Optional[Callable[[str, U], Optional[T]]] = None,
     ) -> None:
         super().__init__(
@@ -80,11 +80,11 @@ class LoopingNode(Node):
     def __init__(
         self,
         name: str,
-        prompt: Union[Callable[U, str], str],
+        prompt: Union[Callable[[U], str], str],
         quit_callback: Callable[[T, U], bool],
-        exit_callback: Callable[U, NodeReturnValue],
+        exit_callback: Callable[[U], NodeReturnValue],
         on_invalid: Callable[[str, U], None],
-        init_callback: Optional[Callable[U, None]] = None,
+        init_callback: Optional[Callable[[U], None]] = None,
         input_parser: Optional[Callable[[str, U], Optional[T]]] = None,
         loop_callback: Optional[Callable[[T, list[T], U], None]] = None,
     ) -> None:
@@ -94,7 +94,7 @@ class LoopingNode(Node):
         self.quit_callback = quit_callback
         self.loop_callback = loop_callback
 
-    def call(self, state: U) -> T:
+    def call(self, state: U) -> NodeReturnValue:
         if self.init_callback is not None:
             self.init_callback(state)
 
@@ -118,9 +118,10 @@ class LoopingNode(Node):
                 self.on_invalid(cur_input, state)
 
             buf.append(parsed_input)
-            self.loop_callback(parsed_input, buf, state)
+            if self.loop_callback is not None:
+                self.loop_callback(parsed_input, buf, state)
 
-            if not self.quit_callback(parsed_input, state):
+            if self.quit_callback(parsed_input, state):
                 break
 
         state.prev_outputs[self.name].add_output(buf)

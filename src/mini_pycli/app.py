@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, TypeVar
+from typing import Callable, Optional, TypeVar
 
 from .core_nodes import Node, NodeOutput, SpecialReturnValue
 
@@ -6,9 +6,10 @@ T = TypeVar("T")
 
 
 class App:
-    def __init__(self, init_callback: Callable[Any, T]) -> None:
+    def __init__(self, init_callback: Callable[..., T], update_callback: Callable[T, None]) -> None:
         self.nodes: dict[str, Node] = dict()
         self.init_callback = init_callback
+        self.update_callback = update_callback
         self.state: Optional[T] = None
         self.node_stack: list[str] = []
         self.node_stack_index: int = 0
@@ -31,7 +32,7 @@ class App:
 
     def get_current_node(self) -> Node:
         self._error_if_not_init()
-        return self.node_stack[self.node_stack_index]
+        return self.nodes[self.node_stack[self.node_stack_index]]
 
     def mainloop(self) -> None:
         self._error_if_not_init()
@@ -46,26 +47,30 @@ class App:
                     if not self.set_current_node(next_node):
                         raise ValueError(
                             f"{next_node} is not the name of a node")
+            self.update_callback(self.state)
 
     def node_exists(self, name: str) -> bool:
         return name in self.nodes
 
-    def set_current_node(self, name: str) -> Optional[bool]:
+    def set_current_node(self, name: str) -> bool:
         if name not in self.nodes:
             return False
         self.node_stack.append(name)
         self.node_stack_index = len(self.node_stack) - 1
+        return True
 
     def _error_if_not_init(self) -> None:
         if self.state is None:
             raise ValueError("must initialize app before mainloop is called")
 
-    def _set_current_node_next_in_stack(self) -> Optional[bool]:
-        if self.node_stack_index >= len(self.node_stack):
+    def _set_current_node_next_in_stack(self) -> bool:
+        if self.node_stack_index >= len(self.node_stack) - 1:
             return False
         self.node_stack_index += 1
+        return True
 
-    def _set_current_node_last_in_stack(self) -> Optional[bool]:
-        if self.node_stack_index < 0:
+    def _set_current_node_last_in_stack(self) -> bool:
+        if self.node_stack_index <= 0:
             return False
         self.node_stack_index -= 1
+        return True
