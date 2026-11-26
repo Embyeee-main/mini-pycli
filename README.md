@@ -21,7 +21,7 @@ The recommended way to set up and use mini-pycli is [uv](https://docs.astral.sh/
 ```bash
 uv init my-app        # skip if you already have a project
 cd my-app
-uv add [<repo-url>](https://github.com/Embyeee-main/mini-pycli.git)
+uv add git+https://github.com/Embyeee-main/mini-pycli.git
 ```
 
 Run your script inside the managed environment:
@@ -37,7 +37,7 @@ pip install mini-pycli
 # or, from a local clone
 pip install .
 # or, directly from Git
-pip install git+[<repo-url>](https://github.com/Embyeee-main/mini-pycli.git)
+pip install git+https://github.com/Embyeee-main/mini-pycli.git
 ```
 
 ## Quick start
