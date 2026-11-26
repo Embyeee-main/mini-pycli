@@ -46,12 +46,8 @@ pip install git+https://github.com/Embyeee-main/mini-pycli.git
 from dataclasses import dataclass
 
 from mini_pycli.app import App
-from mini_pycli.core_nodes import (
-    LoopingNode,
-    NodeReturnValue,
-    SingleNode,
-    SpecialReturnValue,
-)
+from mini_pycli.core_nodes import (LoopingNode, NodeOutput, NodeReturnValue,
+                                   SingleNode, SpecialReturnValue)
 
 
 # 1. Define the shared state. It must be a regular object with a __dict__
@@ -68,7 +64,9 @@ def init_callback(greeting: str) -> State:
 
 # update is called after every node finishes
 def update_callback(state: State) -> None:
-    print("hi from the update callback!")
+    if state.cur_node == "items":
+        prev_item_outputs: NodeOutput = state.prev_outputs["items"]
+        print("Current list: " + ", ".join(prev_item_outputs.previous_outputs))
 
 
 # 2. Create the app. init_callback builds your state object.
@@ -96,7 +94,8 @@ items = LoopingNode(
 
 def finish(state):
     name = state.prev_outputs["greet"].most_recent_output
-    entered = state.prev_outputs["items"].most_recent_output[:-1]  # drop "done"
+    # drop "done"
+    entered = state.prev_outputs["items"].most_recent_output[:-1]
     print(f"{name} added: {', '.join(entered) or 'nothing'}")
     state.running = False  # stops the main loop
     return NodeReturnValue(next_node=SpecialReturnValue.NEXT_NODE)

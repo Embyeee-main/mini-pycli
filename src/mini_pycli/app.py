@@ -23,6 +23,7 @@ class App:
       to ``False`` from a callback to end the program.
     * ``prev_outputs`` (``dict[str, NodeOutput]``): the recorded outputs of
       each node, keyed by node name.
+    * ``cur_node`` (``str``): The name of the current node
 
     The state object must therefore support attribute assignment through
     ``__dict__`` (e.g. a regular class or non-slotted dataclass).
@@ -70,6 +71,7 @@ class App:
         self.state = self.init_callback(**kwargs)
         self.state.__dict__["running"] = True
         self.state.__dict__["prev_outputs"] = dict()
+        self.state.__dict__["cur_node"] = None
 
     def add_node(self, node: Node) -> None:
         """Register a node and create its output history.
@@ -138,6 +140,7 @@ class App:
         self._error_if_not_init()
         while self.state.running:
             cur_node = self.get_current_node()
+            self.state.cur_node = cur_node.name
             match (next_node := cur_node.call(self.state).next_node):
                 case SpecialReturnValue.NEXT_NODE:
                     self._set_current_node_next_in_stack()
