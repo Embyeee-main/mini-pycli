@@ -6,7 +6,7 @@ A tiny framework for building interactive, prompt-driven command-line programs o
 - Validate and parse input per node, with a hook for invalid input
 - Branch by returning the name of the next node
 - Every answer is stored in `state.prev_outputs`, so later nodes can read earlier answers
-- No dependencies beyond the Python standard library
+- No dependencies beyond the Python standard library + Pytest for unit testing
 
 ## Requirements
 
