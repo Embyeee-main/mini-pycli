@@ -58,12 +58,12 @@ from mini_pycli.core_nodes import (
 #    (a dataclass or SimpleNamespace works).
 @dataclass
 class State:
-    greeting: str = "Hello"
+    greeting: str
 
 
 # called when the app.init() is called and must return a state object
-def init_callback(**kwargs) -> State:
-    return State()
+def init_callback(greeting: str) -> State:
+    return State(greeting)
 
 
 # update is called after every node finishes
@@ -73,7 +73,7 @@ def update_callback(state: State) -> None:
 
 # 2. Create the app. init_callback builds your state object.
 app = App(init_callback=init_callback, update_callback=update_callback)
-app.init()  # extra kwargs are forwarded to init_callback
+app.init(greeting="Hello")  # extra kwargs are forwarded to init_callback
 
 
 # 3. Define nodes.
@@ -122,7 +122,7 @@ app.mainloop()
 ### `App`
 
 ```python
-App(init_callback)
+App(init_callback, update_callback)
 ```
 
 | Method | Description |
@@ -200,6 +200,7 @@ The app keeps a history stack of visited nodes. Jumping by name pushes onto it; 
 
 ## Tips
 
+- Use the dataclass decorator from the built-in dataclasses library for the application state
 - Put validation in `input_parser` and the error message in `on_invalid`.
 - Use a callable `prompt` to build prompts from earlier answers: `lambda state: f"Hi {state.prev_outputs['greet'].most_recent_output}, ..."`.
 - Use `init_callback` on a node to reset or prepare state each time the node is entered.
