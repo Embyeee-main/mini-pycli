@@ -21,28 +21,13 @@ The recommended way to set up and use mini-pycli is [uv](https://docs.astral.sh/
 ```bash
 uv init my-app        # skip if you already have a project
 cd my-app
-uv add mini-pycli
+uv add [<repo-url>](https://github.com/Embyeee-main/mini-pycli.git)
 ```
 
 Run your script inside the managed environment:
 
 ```bash
 uv run main.py
-```
-
-### Try it without a project
-
-```bash
-uv run --with mini-pycli python
-```
-
-### Working on mini-pycli itself
-
-```bash
-git clone <repo-url>
-cd mini-pycli
-uv sync               # creates .venv and installs the project in editable mode
-uv run python examples/quickstart.py
 ```
 
 ### Using pip instead
@@ -52,7 +37,7 @@ pip install mini-pycli
 # or, from a local clone
 pip install .
 # or, directly from Git
-pip install git+<repo-url>
+pip install git+[<repo-url>](https://github.com/Embyeee-main/mini-pycli.git)
 ```
 
 ## Quick start
