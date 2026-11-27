@@ -1,10 +1,10 @@
 [project]
 name = "mini-pycli"
 version = "0.1.0"
-description = "Add your description here"
+description = "A small cli library for python"
 readme = "README.md"
 authors = [
-    { name = "Embyeee", email = "11023610@uvu.edu" }
+    { name = "Ethan Brown", email = "ethanmb04@gmail.com" }
 ]
 requires-python = ">=3.13"
 dependencies = []

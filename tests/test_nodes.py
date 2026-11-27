@@ -2,13 +2,15 @@ from typing import Any
 
 import pytest
 
-from mini_pycli.core_nodes import (LoopingNode, NodeOutput, NodeReturnValue,
-                                   SingleNode)
+from mini_pycli.core_nodes import LoopingNode, SingleNode
+from mini_pycli.data import (BaseState, NodeOutput, NodeReturnValue,
+                             SpecialReturnValue)
 
 
-class State:
+class State(BaseState):
     def __init__(self, prev_outputs, monkeypatch) -> None:
-        self.prev_outputs: dict[str, Any] = prev_outputs
+        super().__init__()
+        self.prev_outputs = prev_outputs
         self.monkeypatch = monkeypatch
 
 
@@ -23,8 +25,8 @@ def exit_cb_test(state) -> NodeReturnValue:
 
 
 def input_parse_test(_in: str, state) -> Any:
-    if _in not in ["quit", "test"]:
-        return None
+    if _in not in ["quit", "input_test"]:
+        return SpecialReturnValue.INVALID_INPUT
     print(_in)
     return _in
 
@@ -51,14 +53,14 @@ def single_node() -> SingleNode:
 
 def quit_callback(val, state) -> bool:
     if val == "quit":
-        return False
+        return True
     else:
         print("continue")
-        return True
+        return False
 
 
 def loop_callback(val, vals, state: State) -> None:
-    print("foo")
+    print("loop")
     state.monkeypatch.setattr("builtins.input", lambda _: "quit")
 
 
@@ -79,12 +81,12 @@ def looping_node() -> LoopingNode:
 def test_single_input_node(
     single_node: SingleNode, state: State, monkeypatch, capsys
 ) -> None:
-    monkeypatch.setattr("builtins.input", lambda _: "test")
+    monkeypatch.setattr("builtins.input", lambda _: "input_test")
 
     test_next_node = single_node.call(state)
     captured = capsys.readouterr()
-    assert captured.out == "init_cb\ntest\nexit_cb\n"
-    assert state.prev_outputs["test"].most_recent_output == "test"
+    assert captured.out == "init_cb\ninput_test\nexit_cb\n"
+    assert state.prev_outputs["test"].most_recent_output == "input_test"
     assert test_next_node.next_node == "none"
 
 
@@ -102,12 +104,12 @@ def test_single_input_node_invalid_input(
 
 
 def test_looping_input_node(looping_node, state: State, monkeypatch, capsys) -> None:
-    monkeypatch.setattr("builtins.input", lambda _: "test")
+    monkeypatch.setattr("builtins.input", lambda _: "input_test")
     test_next_node = looping_node.call(state)
 
     captured = capsys.readouterr()
-    assert captured.out == "init_cb\ntest\nfoo\ncontinue\nquit\nfoo\nexit_cb\n"
-    assert state.prev_outputs["test2"].most_recent_output == ["test", "quit"]
+    assert captured.out == "init_cb\ninput_test\nloop\ncontinue\nquit\nloop\nexit_cb\n"
+    assert state.prev_outputs["test2"].most_recent_output == ["input_test", "quit"]
     assert test_next_node.next_node == "none"
 
 

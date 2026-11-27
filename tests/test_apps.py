@@ -1,12 +1,13 @@
 import pytest
 
 from mini_pycli.app import App
-from mini_pycli.core_nodes import (LoopingNode, NodeOutput, NodeReturnValue,
-                                   SingleNode)
+from mini_pycli.core_nodes import LoopingNode, SingleNode
+from mini_pycli.data import BaseState, NodeReturnValue, SpecialReturnValue
 
 
-class State:
+class State(BaseState):
     def __init__(self, monkeypatch) -> None:
+        super().__init__()
         self.monkeypatch = monkeypatch
 
 
@@ -14,20 +15,28 @@ def init_test(monkeypatch) -> State:
     return State(monkeypatch)
 
 
+def update_test(test) -> None:
+    print("update")
+
+
+def exit_test(test) -> None:
+    print("exit")
+
+
 @pytest.fixture
 def app(monkeypatch) -> App:
-    test_app = App(init_test)
-    test_app.init(monkeypatch)
+    test_app = App(init_test, update_test, exit_test)
+    test_app.init(monkeypatch=monkeypatch)
     return test_app
 
 
 def exit_cb_test(state) -> NodeReturnValue:
-    return NodeReturnValue("none")
+    return NodeReturnValue("test2")
 
 
 def input_parse_test(_in: str, state):
-    if _in not in ["quit", "test"]:
-        return None
+    if _in not in ["quit", "input_test"]:
+        return SpecialReturnValue.INVALID_INPUT
     return _in
 
 
@@ -53,14 +62,13 @@ def single_node() -> SingleNode:
 
 def quit_callback(val, state) -> bool:
     if val == "quit":
-        return False
-    else:
-        print("continue")
+        state.running = False
         return True
+    else:
+        return False
 
 
 def loop_callback(val, vals, state: State) -> None:
-    print("foo")
     state.monkeypatch.setattr("builtins.input", lambda _: "quit")
 
 
@@ -111,8 +119,9 @@ def test_set_current_node(app, looping_node) -> None:
 
 
 def test_get_current_node(app, single_node) -> None:
-    app.add_node(looping_node)
-    app.set_current_node("test2")
+    app.add_node(single_node)
+    app.set_current_node("test")
+    print(app.node_stack)
 
     assert app.get_current_node() == single_node
 
@@ -142,3 +151,24 @@ def test_set_node_to_next_node(app, single_node, looping_node) -> None:
 
     assert app.get_current_node() == looping_node
     assert not app._set_current_node_next_in_stack()
+
+
+def test_mainloop(monkeypatch, capsys, app, single_node, looping_node) -> None:
+    monkeypatch.setattr("builtins.input", lambda _: "input_test")
+
+    app.add_node(single_node)
+    app.add_node(looping_node)
+
+    app.set_current_node("test")
+    app.set_current_node("test2")
+
+    app._set_current_node_last_in_stack()
+
+    assert app.get_current_node().name == "test"
+
+    app.mainloop()
+
+    captured = capsys.readouterr()
+    assert captured.out == "update\nupdate\nexit\n"
+
+

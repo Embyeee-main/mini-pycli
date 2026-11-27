@@ -2,79 +2,107 @@
 
 :class:`App` owns the shared state, the registered nodes, and the node history
 (a stack). Its :meth:`App.mainloop` repeatedly runs the current node and moves
-to the next one based on the node's :class:`~mini_pycli.core_nodes.NodeReturnValue`
-until ``state.running`` becomes ``False``.
+to the next one based on the :class:`~mini_pycli.data.NodeReturnValue` the node
+returns, until ``state.running`` becomes ``False``.
 """
 
-from typing import Callable, Optional, TypeVar
+from typing import Callable, Optional
 
-from .core_nodes import Node, NodeOutput, SpecialReturnValue
-
-T = TypeVar("T")
+from .core_nodes import Node
+from .data import BaseState, NodeOutput, SpecialReturnValue
 
 
 class App:
     """Runs a node-based interactive CLI flow.
 
     The app holds a user-defined state object that is passed to every node and
-    callback. On :meth:`init`, two attributes are injected into the state:
+    callback. The state must inherit from :class:`~mini_pycli.data.BaseState`,
+    which provides three attributes the app relies on:
 
     * ``running`` (``bool``): the main loop runs while this is ``True``. Set it
       to ``False`` from a callback to end the program.
     * ``prev_outputs`` (``dict[str, NodeOutput]``): the recorded outputs of
-      each node, keyed by node name.
-    * ``cur_node`` (``str``): The name of the current node
+      each node, keyed by node name. :meth:`add_node` creates each entry.
+    * ``cur_node`` (``str``): the name of the node most recently started by
+      the main loop.
 
-    The state object must therefore support attribute assignment through
-    ``__dict__`` (e.g. a regular class or non-slotted dataclass).
+    Navigation uses a stack of visited node names. Returning a node name from
+    a node pushes that node onto the stack and makes it current;
+    ``SpecialReturnValue.LAST_NODE`` and ``SpecialReturnValue.NEXT_NODE`` move
+    the current position backward or forward within the stack without changing
+    it.
 
-    Navigation uses a stack of visited node names. Jumping to a node by name
-    pushes it onto the stack; :class:`~mini_pycli.core_nodes.SpecialReturnValue`
-    values move the current position backward or forward within that stack.
+    Typical usage::
+
+        app = App(init_callback=make_state)
+        app.init(some_kwarg=...)          # builds the state
+        app.add_node(first_node)          # register every node
+        app.add_node(second_node)
+        app.set_current_node("first")     # choose the starting node
+        app.mainloop()                    # run until state.running is False
 
     Attributes:
         nodes: Registered nodes, keyed by name.
         init_callback: Factory that builds the state object.
-        update_callback: Called with the state after every node finishes.
+        update_callback: Called with the state after every node finishes and
+            navigation has been applied, or ``None``.
+        exit_callback: Called once with the state after the main loop ends, or
+            ``None``.
         state: The state object, or ``None`` before :meth:`init` is called.
         node_stack: Names of visited nodes, in the order they were entered.
         node_stack_index: Index into ``node_stack`` of the current node.
     """
 
-    def __init__(self, init_callback: Callable[..., T], update_callback: Callable[T, None]) -> None:
+    def __init__(
+        self,
+        init_callback: Callable[..., BaseState],
+        update_callback: Optional[Callable[[BaseState], None]] = None,
+        exit_callback: Optional[Callable[[BaseState], None]] = None,
+    ) -> None:
         """Create an app.
 
         Args:
             init_callback: Called by :meth:`init` with its keyword arguments;
-                must return the state object.
-            update_callback: Called with the state at the end of each
-                iteration of the main loop, after navigation has been
-                applied. Useful for rendering or bookkeeping.
+                must return an instance of a :class:`~mini_pycli.data.BaseState`
+                subclass.
+            update_callback: Optional. Called with the state at the end of each
+                iteration of the main loop, after navigation has been applied.
+                ``state.cur_node`` is still the node that just finished, which
+                makes this a convenient place for rendering or bookkeeping.
+            exit_callback: Optional. Called once with the state after the main
+                loop ends (that is, after ``state.running`` becomes ``False``).
         """
         self.nodes: dict[str, Node] = dict()
         self.init_callback = init_callback
         self.update_callback = update_callback
-        self.state: Optional[T] = None
+        self.exit_callback = exit_callback
+        self.state: Optional[BaseState] = None
         self.node_stack: list[str] = []
         self.node_stack_index: int = 0
 
     def init(self, **kwargs) -> None:
-        """Build the state and prepare it for use.
+        """Build the state object. Must be called before adding nodes.
 
-        Calls ``init_callback(**kwargs)`` to create the state, then adds the
-        ``running`` flag (``True``) and an empty ``prev_outputs`` mapping to
-        it. This must be called before adding nodes or running the app.
+        Calls ``init_callback(**kwargs)`` and stores the result as
+        :attr:`state`.
 
         Args:
             **kwargs: Passed through to ``init_callback``.
+
+        Raises:
+            TypeError: If the returned state does not inherit from
+                :class:`~mini_pycli.data.BaseState`.
         """
         self.state = self.init_callback(**kwargs)
-        self.state.__dict__["running"] = True
-        self.state.__dict__["prev_outputs"] = dict()
-        self.state.__dict__["cur_node"] = None
+        if not isinstance(self.state, BaseState):
+            raise TypeError("state must inherit from BaseState")
 
     def add_node(self, node: Node) -> None:
         """Register a node and create its output history.
+
+        Adds the node to :attr:`nodes` and creates an empty
+        :class:`~mini_pycli.data.NodeOutput` for it in
+        ``state.prev_outputs[node.name]``.
 
         Args:
             node: The node to register.
@@ -92,8 +120,9 @@ class App:
     def remove_node(self, name: str) -> None:
         """Unregister a node.
 
-        The node's entry in ``state.prev_outputs`` and any occurrences in the
-        node stack are left untouched.
+        The node's entry in ``state.prev_outputs`` and any occurrences of its
+        name in the node stack are left untouched. Running the app while the
+        stack still points at a removed node raises ``KeyError``.
 
         Args:
             name: Name of the node to remove.
@@ -121,15 +150,26 @@ class App:
     def mainloop(self) -> None:
         """Run the app until ``state.running`` is ``False``.
 
-        Each iteration runs the current node, then navigates based on the
-        returned ``next_node``:
+        Each iteration:
 
-        * ``SpecialReturnValue.NEXT_NODE``: move forward in the node stack.
-        * ``SpecialReturnValue.LAST_NODE``: move back in the node stack.
-        * A string: push that node onto the stack and make it current.
+        1. Looks up the current node and sets ``state.cur_node`` to its name.
+        2. Runs the node (see :meth:`mini_pycli.core_nodes.Node.call`).
+        3. Navigates based on the returned ``next_node``:
 
-        After navigation, ``update_callback`` is called with the state. Use
-        :meth:`set_current_node` to choose the starting node before calling
+           * ``SpecialReturnValue.NEXT_NODE``: move forward in the node stack.
+           * ``SpecialReturnValue.LAST_NODE``: move back in the node stack.
+           * A string: push that node onto the stack and make it current.
+
+           Moving past either end of the stack does nothing, so the same node
+           runs again.
+        4. Calls ``update_callback(state)`` if one was given.
+
+        Navigation is applied even on the final iteration, so a node that sets
+        ``state.running = False`` must still return a valid ``next_node``
+        (``SpecialReturnValue.NEXT_NODE`` is always safe). When the loop ends,
+        ``exit_callback(state)`` is called if one was given.
+
+        Use :meth:`set_current_node` to choose the starting node before calling
         this method.
 
         Raises:
@@ -148,9 +188,12 @@ class App:
                     self._set_current_node_last_in_stack()
                 case _:
                     if not self.set_current_node(next_node):
-                        raise ValueError(
-                            f"{next_node} is not the name of a node")
-            self.update_callback(self.state)
+                        raise ValueError(f"{next_node} is not the name of a node")
+            if self.update_callback is not None:
+                self.update_callback(self.state)
+
+        if self.exit_callback is not None:
+            self.exit_callback(self.state)
 
     def node_exists(self, name: str) -> bool:
         """Check whether a node is registered.
@@ -167,7 +210,9 @@ class App:
         """Make a node current by pushing it onto the node stack.
 
         The name is appended to the end of the stack (history is not
-        truncated) and the stack index is moved to it.
+        truncated, even if the index was somewhere in the middle) and the stack
+        index is moved to it. Call this once before :meth:`mainloop` to pick the
+        starting node.
 
         Args:
             name: Name of the node to switch to.
